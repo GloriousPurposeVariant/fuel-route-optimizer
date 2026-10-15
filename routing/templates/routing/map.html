@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Fuel Route Optimizer</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <style>
+        :root {
+            --panel: #ffffff;
+            --page: #f5f7fa;
+            --text: #1f2933;
+            --muted: #616e7c;
+            --accent: #0b6e4f;
+            --error: #b42318;
+            --border: #e4e7eb;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            height: 100%;
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+            color: var(--text);
+            background: var(--page);
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 360px 1fr;
+            height: 100%;
+        }
+
+        .panel {
+            background: var(--panel);
+            border-right: 1px solid var(--border);
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        #map {
+            height: 100%;
+        }
+
+        h1 {
+            font-size: 1.15rem;
+            margin: 0 0 16px;
+        }
+
+        form {
+            display: grid;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+
+        label {
+            font-size: .8rem;
+            color: var(--muted);
+        }
+
+        input {
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font: inherit;
+        }
+
+        button {
+            margin-top: 6px;
+            padding: 9px;
+            border: 0;
+            border-radius: 6px;
+            background: var(--accent);
+            color: #fff;
+            font: inherit;
+            cursor: pointer;
+        }
+
+        .status {
+            font-size: .9rem;
+            color: var(--muted);
+        }
+
+        .status.error {
+            color: var(--error);
+        }
+
+        .totals {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin: 12px 0 16px;
+        }
+
+        .totals div {
+            background: var(--page);
+            border-radius: 6px;
+            padding: 8px 10px;
+        }
+
+        .totals strong {
+            display: block;
+            font-size: 1.1rem;
+        }
+
+        .totals span {
+            font-size: .75rem;
+            color: var(--muted);
+        }
+
+        ol.stops {
+            padding-left: 22px;
+            margin: 0;
+        }
+
+        ol.stops li {
+            margin-bottom: 12px;
+            font-size: .9rem;
+        }
+
+        ol.stops small {
+            display: block;
+            color: var(--muted);
+        }
+
+        .stop-marker {
+            width: 24px;
+            height: 24px;
+            line-height: 20px;
+            border-radius: 50%;
+            text-align: center;
+            background: var(--accent);
+            color: #fff;
+            font: 600 12px system-ui, sans-serif;
+            border: 2px solid #fff;
+            box-shadow: 0 0 0 1px var(--accent);
+        }
+
+        @media (max-width: 800px) {
+            .layout {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto 60vh;
+            }
+
+            .panel {
+                border-right: 0;
+                border-bottom: 1px solid var(--border);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="layout">
+        <aside class="panel">
+            <h1>Fuel Route Optimizer</h1>
+            <form method="get">
+                <label for="start">Start</label>
+                <input id="start" name="start" value="{{ start }}" placeholder="Dallas, TX" required>
+                <label for="finish">Finish</label>
+                <input id="finish" name="finish" value="{{ finish }}" placeholder="Chicago, IL" required>
+                <button type="submit">Plan route</button>
+            </form>
+            <p id="status" class="status">Enter two US cities as "City, ST".</p>
+            <div id="results" hidden>
+                <div class="totals">
+                    <div><strong id="distance"></strong><span>miles</span></div>
+                    <div><strong id="cost"></strong><span>fuel cost</span></div>
+                    <div><strong id="gallons"></strong><span>gallons</span></div>
+                    <div><strong id="stop-count"></strong><span>fuel stops</span></div>
+                </div>
+                <ol id="stops" class="stops"></ol>
+            </div>
+        </aside>
+        <div id="map"></div>
+    </div>
+
+    <script>
+        const API_URL = "{% url 'route' %}";
+        const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+        const statusEl = document.getElementById("status");
+        const resultsEl = document.getElementById("results");
+        // OSM's tile policy requires a Referer; Django's default "same-origin" policy would strip it.
+        const map = L.map("map").setView([39.5, -98.35], 4);
+        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            maxZoom: 19,
+            referrerPolicy: "strict-origin-when-cross-origin",
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        }).addTo(map);
+
+        const layer = L.layerGroup().addTo(map);
+
+        function setStatus(message, isError = false) {
+            statusEl.textContent = message;
+            statusEl.classList.toggle("error", isError);
+        }
+
+        function popupContent(lines) {
+            const box = document.createElement("div");
+            lines.forEach((text, index) => {
+                const line = document.createElement(index === 0 ? "strong" : "div");
+                line.textContent = text;
+                box.appendChild(line);
+            });
+            return box;
+        }
+
+        function endpoint(location, label, fill) {
+            return L.circleMarker([location.lat, location.lon], {
+                radius: 8, color: "#1f2933", weight: 2, fillColor: fill, fillOpacity: 1,
+            }).bindPopup(popupContent([label, location.name]));
+        }
+
+        function render(trip) {
+            layer.clearLayers();
+            const route = L.geoJSON(trip.route_geometry, { style: { color: "#0b6e4f", weight: 4 } }).addTo(layer);
+            endpoint(trip.start, "Start", "#ffffff").addTo(layer);
+            endpoint(trip.finish, "Finish", "#1f2933").addTo(layer);
+
+            const list = document.getElementById("stops");
+            list.replaceChildren();
+            trip.fuel_stops.forEach((stop, index) => {
+                const lines = [
+                    stop.name,
+                    `${stop.city}, ${stop.state}`,
+                    `Mile ${stop.mile_marker} · ${stop.distance_from_route_miles} mi off route`,
+                    `${stop.gallons} gal × $${stop.price_per_gallon.toFixed(3)} = ${usd.format(stop.cost_usd)}`,
+                ];
+                const icon = L.divIcon({ className: "", html: `<div class="stop-marker">${index + 1}</div>`, iconSize: [24, 24] });
+                L.marker([stop.lat, stop.lon], { icon }).bindPopup(popupContent(lines)).addTo(layer);
+
+                const item = document.createElement("li");
+                const title = document.createElement("strong");
+                title.textContent = lines[0];
+                item.appendChild(title);
+                lines.slice(1).forEach((text) => {
+                    const detail = document.createElement("small");
+                    detail.textContent = text;
+                    item.appendChild(detail);
+                });
+                list.appendChild(item);
+            });
+
+            document.getElementById("distance").textContent = trip.distance_miles.toLocaleString("en-US");
+            document.getElementById("cost").textContent = usd.format(trip.summary.total_fuel_cost_usd);
+            document.getElementById("gallons").textContent = trip.summary.total_gallons.toFixed(1);
+            document.getElementById("stop-count").textContent = trip.summary.fuel_stop_count;
+            resultsEl.hidden = false;
+            setStatus(`${trip.start.name} → ${trip.finish.name}`);
+
+            if (trip.route_geometry.coordinates.length > 1) {
+                map.fitBounds(route.getBounds(), { padding: [30, 30] });
+            } else {
+                map.setView([trip.start.lat, trip.start.lon], 10);
+            }
+        }
+
+        async function planRoute(start, finish) {
+            setStatus("Planning route…");
+            resultsEl.hidden = true;
+            try {
+                const response = await fetch(`${API_URL}?${new URLSearchParams({ start, finish })}`, {
+                    headers: { Accept: "application/json" },
+                });
+                const body = await response.json();
+                if (!response.ok) {
+                    layer.clearLayers();
+                    setStatus(body.error ? body.error.message : `Request failed (HTTP ${response.status}).`, true);
+                    return;
+                }
+                render(body);
+            } catch (error) {
+                setStatus("Could not reach the API.", true);
+            }
+        }
+
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("start") && params.get("finish")) {
+            planRoute(params.get("start"), params.get("finish"));
+        }
+    </script>
+</body>
+
+</html>

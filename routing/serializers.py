@@ -1,4 +1,7 @@
+from urllib.parse import urlencode
+
 from django.conf import settings
+from django.urls import reverse
 from rest_framework import serializers
 
 
@@ -36,6 +39,7 @@ class TripPlanSerializer(serializers.Serializer):
     duration_hours = serializers.FloatField()
     vehicle = serializers.SerializerMethodField()
     summary = serializers.SerializerMethodField()
+    map_url = serializers.SerializerMethodField()
     fuel_stops = FuelStopSerializer(source="stops", many=True)
     route_geometry = serializers.SerializerMethodField()
 
@@ -44,6 +48,11 @@ class TripPlanSerializer(serializers.Serializer):
             "range_miles": settings.VEHICLE_RANGE_MILES,
             "miles_per_gallon": settings.VEHICLE_MPG,
         }
+
+    def get_map_url(self, trip):
+        path = f"{reverse('map')}?{urlencode({'start': trip.start.query, 'finish': trip.finish.query})}"
+        request = self.context.get("request")
+        return request.build_absolute_uri(path) if request else path
 
     def get_summary(self, trip):
         return {

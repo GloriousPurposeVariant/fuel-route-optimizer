@@ -54,6 +54,7 @@ class RouteApiTests(TestCase):
             places=2,
         )
         self.assertEqual(body["route_geometry"]["type"], "LineString")
+        self.assertIn("/map/?start=Alpha%2C+TX&finish=Beta%2C+TX", body["map_url"])
 
     def test_missing_parameter(self):
         response = self.client.get(self.url, {"start": "Alpha, TX"})
