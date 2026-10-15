@@ -81,6 +81,8 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_AUTHENTICATION_CLASSES": [],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],
+    "DEFAULT_THROTTLE_RATES": {"route": "30/minute"},
+    "EXCEPTION_HANDLER": "config.exceptions.api_exception_handler",
 }
 
 
