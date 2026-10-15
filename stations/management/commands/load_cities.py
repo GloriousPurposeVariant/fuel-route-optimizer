@@ -50,8 +50,6 @@ class Command(BaseCommand):
     def _read_gazetteer(path):
         with zipfile.ZipFile(path) as archive:
             with archive.open(archive.namelist()[0]) as raw:
-                reader = csv.DictReader(
-                    io.TextIOWrapper(raw, encoding="utf-8"), delimiter="|"
-                )
+                reader = csv.DictReader(io.TextIOWrapper(raw, encoding="utf-8"), delimiter="|")
                 for row in reader:
                     yield {k.strip(): v.strip() for k, v in row.items()}

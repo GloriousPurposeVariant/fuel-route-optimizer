@@ -6,7 +6,12 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
 from stations.fuel_csv import DEFAULT_CSV, read_us_stations
-from stations.geocoding import OVERRIDE_FIELDS, OVERRIDES_PATH, coordinate_lookup, read_override_rows
+from stations.geocoding import (
+    OVERRIDE_FIELDS,
+    OVERRIDES_PATH,
+    coordinate_lookup,
+    read_override_rows,
+)
 from stations.models import City
 from stations.normalize import city_key
 
@@ -29,16 +34,20 @@ class Command(BaseCommand):
             raise CommandError("City table is empty. Run `python manage.py load_cities` first.")
 
         coords = coordinate_lookup()
-        missing = sorted({
-            (row["City"], row["State"])
-            for row in read_us_stations(csv_path).stations.values()
-            if (city_key(row["City"]), row["State"]) not in coords
-        })
+        missing = sorted(
+            {
+                (row["City"], row["State"])
+                for row in read_us_stations(csv_path).stations.values()
+                if (city_key(row["City"]), row["State"]) not in coords
+            }
+        )
         if not missing:
             self.stdout.write(self.style.SUCCESS("Every station city already has coordinates."))
             return
 
-        self.stdout.write(f"Geocoding {len(missing)} places via Nominatim (~{len(missing) * REQUEST_INTERVAL_SECONDS:.0f}s)...")
+        self.stdout.write(
+            f"Geocoding {len(missing)} places via Nominatim (~{len(missing) * REQUEST_INTERVAL_SECONDS:.0f}s)..."
+        )
         session = requests.Session()
         session.headers["User-Agent"] = settings.NOMINATIM_USER_AGENT
 
@@ -59,9 +68,15 @@ class Command(BaseCommand):
             writer.writeheader()
             writer.writerows(rows)
 
-        self.stdout.write(self.style.SUCCESS(f"Added {len(found)} places to {OVERRIDES_PATH.name}."))
+        self.stdout.write(
+            self.style.SUCCESS(f"Added {len(found)} places to {OVERRIDES_PATH.name}.")
+        )
         if not_found:
-            self.stdout.write(self.style.WARNING(f"No town-level match for {len(not_found)} places (add them by hand):"))
+            self.stdout.write(
+                self.style.WARNING(
+                    f"No town-level match for {len(not_found)} places (add them by hand):"
+                )
+            )
             for place in not_found:
                 self.stdout.write(f"    {place}")
 
@@ -69,8 +84,13 @@ class Command(BaseCommand):
     def _geocode(session, city, state):
         response = session.get(
             NOMINATIM_URL,
-            params={"q": f"{city}, {state}, USA", "format": "jsonv2", "countrycodes": "us",
-                    "addressdetails": 1, "limit": 10},
+            params={
+                "q": f"{city}, {state}, USA",
+                "format": "jsonv2",
+                "countrycodes": "us",
+                "addressdetails": 1,
+                "limit": 10,
+            },
             timeout=10,
         )
         response.raise_for_status()

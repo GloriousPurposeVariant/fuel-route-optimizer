@@ -27,6 +27,7 @@ def city_key(name):
     key = re.sub(r"\bfort\b", "ft", key)
     return re.sub(r"[^a-z0-9]", "", key)
 
+
 def census_aliases(name):
     """Other names a Census place should also be found under."""
     aliases = set(re.split(r"[-/]", name))
