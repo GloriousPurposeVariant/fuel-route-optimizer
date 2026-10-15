@@ -33,17 +33,19 @@ class Command(BaseCommand):
             if point is None:
                 unmatched[f"{row['City']}, {row['State']}"] += 1
                 continue
-            stations.append(FuelStation(
-                opis_id=opis_id,
-                name=row["Truckstop Name"],
-                address=row["Address"],
-                city=row["City"],
-                state=row["State"],
-                rack_id=int(row["Rack ID"]),
-                price=row["price"],
-                latitude=point[0],
-                longitude=point[1],
-            ))
+            stations.append(
+                FuelStation(
+                    opis_id=opis_id,
+                    name=row["Truckstop Name"],
+                    address=row["Address"],
+                    city=row["City"],
+                    state=row["State"],
+                    rack_id=int(row["Rack ID"]),
+                    price=row["price"],
+                    latitude=point[0],
+                    longitude=point[1],
+                )
+            )
 
         with transaction.atomic():
             FuelStation.objects.all().delete()
@@ -51,12 +53,16 @@ class Command(BaseCommand):
 
         self.stdout.write(f"Rows read:                  {parsed.total_rows:,}")
         self.stdout.write(f"Dropped non-US rows:        {parsed.non_us_rows:,}")
-        self.stdout.write(f"Dropped duplicate rows:     {parsed.duplicate_rows:,} (kept cheapest price per station)")
+        self.stdout.write(
+            f"Dropped duplicate rows:     {parsed.duplicate_rows:,} (kept cheapest price per station)"
+        )
         self.stdout.write(f"Unique US stations:         {len(parsed.stations):,}")
         if unmatched:
-            self.stdout.write(self.style.WARNING(
-                f"Skipped, city not found:    {sum(unmatched.values()):,} in {len(unmatched):,} places"
-            ))
+            self.stdout.write(
+                self.style.WARNING(
+                    f"Skipped, city not found:    {sum(unmatched.values()):,} in {len(unmatched):,} places"
+                )
+            )
             for place, count in unmatched.most_common(15):
                 self.stdout.write(f"    {place} ({count})")
         self.stdout.write(self.style.SUCCESS(f"Loaded {len(stations):,} fuel stations."))

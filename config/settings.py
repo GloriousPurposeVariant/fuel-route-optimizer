@@ -12,8 +12,8 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 
 import os
 from pathlib import Path
-from django.core.exceptions import ImproperlyConfigured
 
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -32,6 +32,9 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "False") == "True"
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
 ORS_API_KEY = os.environ.get("ORS_API_KEY", "")
+
+ORS_PROFILE = os.environ.get("ORS_PROFILE", "driving-hgv")
+ORS_TIMEOUT_SECONDS = 15
 
 # Identifies this app to Nominatim (required by its usage policy). Used only by the
 # one-time `build_city_overrides` command, not by the API at runtime.
