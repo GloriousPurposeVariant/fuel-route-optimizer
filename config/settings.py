@@ -36,6 +36,8 @@ ORS_API_KEY = os.environ.get("ORS_API_KEY", "")
 ORS_PROFILE = os.environ.get("ORS_PROFILE", "driving-hgv")
 ORS_TIMEOUT_SECONDS = 15
 
+CORRIDOR_RADIUS_MILES = float(os.environ.get("CORRIDOR_RADIUS_MILES", "10"))
+
 # Identifies this app to Nominatim (required by its usage policy). Used only by the
 # one-time `build_city_overrides` command, not by the API at runtime.
 # The default is for this assessment. A User-Agent is not verified, so anyone running
