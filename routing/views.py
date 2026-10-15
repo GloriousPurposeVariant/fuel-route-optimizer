@@ -1,3 +1,4 @@
+from django.shortcuts import render
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
@@ -12,6 +13,12 @@ def health(request):
     return Response({"status": "ok"})
 
 
+def route_map(request):
+    """HTML page that calls /api/route/ from the browser and draws the result with Leaflet."""
+    context = {"start": request.GET.get("start", ""), "finish": request.GET.get("finish", "")}
+    return render(request, "routing/map.html", context)
+
+
 class RouteView(APIView):
     """GET /api/route/?start=City, ST&finish=City, ST"""
 
@@ -22,4 +29,4 @@ class RouteView(APIView):
         query = RouteQuerySerializer(data=request.query_params)
         query.is_valid(raise_exception=True)
         trip = plan_trip(query.validated_data["start"], query.validated_data["finish"])
-        return Response(TripPlanSerializer(trip).data)
+        return Response(TripPlanSerializer(trip, context={"request": request}).data)
