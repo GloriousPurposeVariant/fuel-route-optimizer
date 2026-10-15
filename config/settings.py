@@ -38,6 +38,9 @@ ORS_TIMEOUT_SECONDS = 15
 
 CORRIDOR_RADIUS_MILES = float(os.environ.get("CORRIDOR_RADIUS_MILES", "10"))
 
+VEHICLE_RANGE_MILES = float(os.environ.get("VEHICLE_RANGE_MILES", "500"))
+VEHICLE_MPG = float(os.environ.get("VEHICLE_MPG", "10"))
+
 # Identifies this app to Nominatim (required by its usage policy). Used only by the
 # one-time `build_city_overrides` command, not by the API at runtime.
 # The default is for this assessment. A User-Agent is not verified, so anyone running

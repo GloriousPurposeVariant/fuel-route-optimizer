@@ -46,3 +46,9 @@ class RouteTooLong(RoutingError):
     status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
     default_detail = "Route is longer than the routing service allows."
     default_code = "ROUTE_TOO_LONG"
+
+
+class FuelGap(RoutingError):
+    status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+    default_detail = "Part of the route has no fuel station within the vehicle's range."
+    default_code = "FUEL_GAP"
