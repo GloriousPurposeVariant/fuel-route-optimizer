@@ -33,6 +33,14 @@ ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").sp
 
 ORS_API_KEY = os.environ.get("ORS_API_KEY", "")
 
+# Identifies this app to Nominatim (required by its usage policy). Used only by the
+# one-time `build_city_overrides` command, not by the API at runtime.
+# The default is for this assessment. A User-Agent is not verified, so anyone running
+# the command should set their own contact (email or repo URL) in .env.
+NOMINATIM_USER_AGENT = os.environ.get(
+    "NOMINATIM_USER_AGENT",
+    "fuel-route-optimizer/0.1 (+https://github.com/GloriousPurposeVariant/fuel-route-optimizer)",
+)
 
 # Application definition
 
