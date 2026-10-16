@@ -11,6 +11,7 @@ Each request makes **one** external API call (OpenRouteService routing). Repeate
 ## Contents
 - [Quick start](#quick-start)
 - [API](#api)
+- [Testing with Postman](#testing-with-postman)
 - [How it works](#how-it-works)
 - [The fuel-stop algorithm](#the-fuel-stop-algorithm)
 - [Data preparation](#data-preparation)
@@ -180,6 +181,35 @@ Returns `{"status": "ok"}`. It isn't rate-limited, and Docker uses it as the con
 
 ---
 
+## Testing with Postman
+
+The `postman/` folder has a ready-made collection: **12 requests with about 72 automated tests**.
+
+1. Start the app (Option A or B above).
+2. In Postman, click **Import** and select both files in `postman/`:
+   - `fuel-route-optimizer.postman_collection.json`
+   - `local.postman_environment.json`
+3. Select the **Fuel Route Optimizer - Local** environment (top right).
+4. Open the collection's **...** menu and choose **Run collection**, then **Run**.
+
+| Folder | Requests |
+|---|---|
+| Health check | Service is up |
+| Plan a route | Dallas to Chicago; the same trip again (cache `HIT`); New York to Los Angeles (many stops); `Saint Louis` resolved to `St. Louis`; same start and finish (no routing call) |
+| Errors | `MISSING_PARAMETER`, `INVALID_LOCATION_FORMAT`, `LOCATION_NOT_IN_USA`, `UNSUPPORTED_REGION`, `LOCATION_NOT_FOUND` |
+| Map page | Opens the `map_url` returned by the Dallas request |
+
+A collection-level script checks **every** successful plan for consistency: stop costs add up to the total, total gallons equal distance ÷ mpg, no stop buys more than one tank, and stops are never more than 500 miles apart. It also checks every error for the `{error: {code, message}}` shape. The tests check these rules rather than specific prices, so they still pass if the price data changes.
+
+The Dallas request and the Toronto error include saved example responses (Postman's **Examples** tab), so you can see the response shape before starting the server.
+
+A first run makes at most 3 OpenRouteService calls; later runs make none because routes are cached. To run from the command line instead (needs Node.js):
+```bash
+npx --yes newman run postman/fuel-route-optimizer.postman_collection.json -e postman/local.postman_environment.json
+```
+
+---
+
 ## How it works
 
 ```mermaid
@@ -259,6 +289,8 @@ Measured locally for Dallas, TX to Chicago, IL:
 | Optimizer | 0.2 ms | 0.3 ms |
 | Station details and geometry | 9 ms | 11 ms |
 | **Total** | **1,671 ms** | **47 ms** |
+
+In Docker (gunicorn with 3 workers and Redis), the same trip measured **1,353 ms** on the first call and **about 22 ms** when cached.
 
 - About 98% of a cold request is the external routing call. Our own work takes about 25 ms.
 - Routes are cached for 24 hours, keyed by resolved coordinates and profile. Only the route is cached, so new prices or vehicle settings take effect immediately.
@@ -342,7 +374,9 @@ routing/                Logic and API
   serializers.py        Request validation and the response contract
   views.py              /api/route/, /api/health/, /map/
   templates/routing/    Leaflet map page
+postman/                Postman collection (12 requests, about 72 tests) and local environment
 data/                   Fuel price CSV, Census Gazetteer zips, city overrides
+docs/                   README screenshots
 ```
 
 ---
@@ -360,6 +394,8 @@ GitHub Actions runs on every pull request:
 - `ruff check` and `ruff format --check`;
 - Django system checks, a missing-migration check and the full test suite on Python 3.12 and 3.14;
 - a Docker image build.
+
+End-to-end checks against a running server are in the [Postman collection](#testing-with-postman).
 
 The project was built as a series of feature branches, each merged through a pull request. See the [pull request history](https://github.com/GloriousPurposeVariant/fuel-route-optimizer/pulls?q=is%3Apr+is%3Aclosed) for the reasoning behind each step.
 
