@@ -6,7 +6,7 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework.throttling import ScopedRateThrottle
 
-from routing.corridor import get_station_index
+from routing.corridor import clear_station_index
 from routing.exceptions import RoutingUnavailable
 from routing.ors import Route
 from stations.models import City, FuelStation
@@ -37,7 +37,7 @@ class RouteApiTests(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.url = reverse("route")
-        get_station_index.cache_clear()
+        clear_station_index()
         cache.clear()
 
     @mock.patch("routing.services.get_route", return_value=FAKE_ROUTE)
@@ -90,3 +90,20 @@ class RouteApiTests(TestCase):
         response = self.client.get(self.url, params)
         self.assertEqual(response.status_code, 429)
         self.assertEqual(response.json()["error"]["code"], "RATE_LIMITED")
+
+    @mock.patch("routing.services.get_route", return_value=FAKE_ROUTE)
+    def test_repeated_trip_is_served_from_route_cache(self, get_route):
+        params = {"start": "Alpha, TX", "finish": "Beta, TX"}
+        first = self.client.get(self.url, params)
+        second = self.client.get(self.url, {"start": "alpha, tx", "finish": "Beta, TX"})
+        self.assertEqual(get_route.call_count, 1)
+        self.assertEqual(first["X-Route-Cache"], "MISS")
+        self.assertEqual(second["X-Route-Cache"], "HIT")
+        self.assertEqual(first.json()["summary"], second.json()["summary"])
+
+    @mock.patch("routing.services.get_route", return_value=FAKE_ROUTE)
+    def test_timing_headers(self, get_route):
+        response = self.client.get(self.url, {"start": "Alpha, TX", "finish": "Beta, TX"})
+        self.assertIn("route;dur=", response["Server-Timing"])
+        self.assertIn("optimize;dur=", response["Server-Timing"])
+        self.assertGreater(float(response["X-Response-Time-ms"]), 0)

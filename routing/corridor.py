@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from functools import lru_cache
 
 import numpy as np
 from django.conf import settings
@@ -37,10 +36,24 @@ class CorridorStation:
     price: float
 
 
-@lru_cache(maxsize=1)
+_station_index = None
+
+
 def get_station_index():
-    rows = list(FuelStation.objects.values_list("id", "price", "latitude", "longitude"))
-    return StationIndex.from_rows(rows)
+    """Station arrays, built once per process. An empty result is not cached, so loading data later works."""
+    global _station_index
+    if _station_index is None:
+        rows = list(FuelStation.objects.values_list("id", "price", "latitude", "longitude"))
+        index = StationIndex.from_rows(rows)
+        if not len(index.ids):
+            return index
+        _station_index = index
+    return _station_index
+
+
+def clear_station_index():
+    global _station_index
+    _station_index = None
 
 
 def resample_route(coordinates, total_miles=None):
