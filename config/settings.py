@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
 import os
+import sys
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
@@ -50,6 +51,37 @@ NOMINATIM_USER_AGENT = os.environ.get(
     "fuel-route-optimizer/0.1 (+https://github.com/GloriousPurposeVariant/fuel-route-optimizer)",
 )
 
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "WARNING" if "test" in sys.argv else "INFO")
+
+REDIS_URL = os.environ.get("REDIS_URL")
+if REDIS_URL:
+    CACHES = {
+        "default": {"BACKEND": "django.core.cache.backends.redis.RedisCache", "LOCATION": REDIS_URL}
+    }
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "fuel-route-optimizer",
+        }
+    }
+
+ROUTE_CACHE_SECONDS = int(os.environ.get("ROUTE_CACHE_SECONDS", str(60 * 60 * 24)))
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "simple": {"format": "{asctime} {levelname} {name}: {message}", "style": "{"},
+    },
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "formatter": "simple"},
+    },
+    "loggers": {
+        "config": {"handlers": ["console"], "level": LOG_LEVEL},
+        "routing": {"handlers": ["console"], "level": LOG_LEVEL},
+    },
+}
 # Application definition
 
 INSTALLED_APPS = [
@@ -65,6 +97,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "config.middleware.RequestTimingMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",

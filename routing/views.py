@@ -29,4 +29,9 @@ class RouteView(APIView):
         query = RouteQuerySerializer(data=request.query_params)
         query.is_valid(raise_exception=True)
         trip = plan_trip(query.validated_data["start"], query.validated_data["finish"])
-        return Response(TripPlanSerializer(trip, context={"request": request}).data)
+        response = Response(TripPlanSerializer(trip, context={"request": request}).data)
+        response["X-Route-Cache"] = "HIT" if trip.route_cache_hit else "MISS"
+        response["Server-Timing"] = ", ".join(
+            f"{name};dur={duration}" for name, duration in trip.timings_ms.items()
+        )
+        return response
