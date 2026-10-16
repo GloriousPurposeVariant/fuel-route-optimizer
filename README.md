@@ -26,7 +26,54 @@ Each request makes **one** external API call (OpenRouteService routing). Repeate
 
 ## Quick start
 
-You need **Python 3.12+** and a free **OpenRouteService API key**. To get one, sign up at [openrouteservice.org](https://openrouteservice.org/dev/#/signup), then go to Dashboard and choose Request a token (Standard).
+Both options need a free **OpenRouteService API key**. To get one, sign up at [openrouteservice.org](https://openrouteservice.org/dev/#/signup), then go to Dashboard and choose Request a token (Standard).
+
+### Option A: Docker (recommended)
+
+You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) or Docker Engine with Compose v2.
+
+```bash
+git clone https://github.com/GloriousPurposeVariant/fuel-route-optimizer.git
+cd fuel-route-optimizer
+cp .env.example .env                 # Windows: copy .env.example .env
+```
+
+Edit `.env` and set two values:
+- `ORS_API_KEY`: your OpenRouteService key
+- `DJANGO_SECRET_KEY`: any long random string. To generate one without installing Python:
+  ```bash
+  docker run --rm python:3.14-slim python -c "import secrets; print(secrets.token_urlsafe(50))"
+  ```
+
+Then start everything:
+```bash
+docker compose up --build
+```
+
+On the **first** start, this:
+1. builds the app image;
+2. starts Redis;
+3. creates the database;
+4. loads about 49,000 US places and the 6,621 US fuel stations (about 30 seconds);
+5. starts gunicorn with 3 workers.
+
+Later starts skip the data loading, because the database is kept in a Docker volume.
+
+Then open:
+- **Map:** http://localhost:8000/map/?start=Dallas, TX&finish=Chicago, IL
+- **API:** http://localhost:8000/api/route/?start=Dallas, TX&finish=Chicago, IL
+
+| Command | What it does |
+|---|---|
+| `docker compose ps` | Shows status; `web` becomes `healthy` when ready |
+| `docker compose logs -f web` | Follows the app logs (request timings, route cache hits and misses) |
+| `docker compose exec web python manage.py ensure_data --force` | Reloads cities and stations, e.g. after changing the CSV |
+| `docker compose down` | Stops everything and keeps the data |
+| `docker compose down -v` | Stops everything and deletes the data volume |
+
+### Option B: Local Python
+
+You need **Python 3.12+**.
 
 ```bash
 git clone https://github.com/GloriousPurposeVariant/fuel-route-optimizer.git
@@ -129,7 +176,7 @@ Input errors are caught **before** any external call, so a bad request never use
 An HTML page that calls `/api/route/` from the browser and draws the route and numbered fuel stops with Leaflet on OpenStreetMap tiles. `/` redirects here.
 
 ### `GET /api/health/`
-Returns `{"status": "ok"}`. It isn't rate-limited.
+Returns `{"status": "ok"}`. It isn't rate-limited, and Docker uses it as the container health check.
 
 ---
 
@@ -194,6 +241,7 @@ The fuel price CSV has no coordinates, and it needs cleaning. This is done **onc
 ```bash
 python manage.py load_cities           # Census places and county subdivisions -> City table
 python manage.py load_stations         # CSV -> cleaned FuelStation table (idempotent)
+python manage.py ensure_data           # both of the above, only if the tables are empty (used by Docker)
 python manage.py build_city_overrides  # one-time; output is already committed
 ```
 
@@ -214,9 +262,9 @@ Measured locally for Dallas, TX to Chicago, IL:
 
 - About 98% of a cold request is the external routing call. Our own work takes about 25 ms.
 - Routes are cached for 24 hours, keyed by resolved coordinates and profile. Only the route is cached, so new prices or vehicle settings take effect immediately.
-- The station index is built when the server starts, not on the first request.
+- The station index is built when the server starts, not on the first request. In Docker, gunicorn's `--preload` builds it once and shares it with all workers.
 - The route geometry is resampled to one point per mile, so a 966-mile response is about 22 KB.
-- With `REDIS_URL` set, the cache and rate-limit counters are shared across workers.
+- With `REDIS_URL` set (as in Docker), the route cache and rate-limit counters are shared across all gunicorn workers.
 
 ---
 
@@ -241,13 +289,14 @@ Measured locally for Dallas, TX to Chicago, IL:
 | **Raw lat/lon input** | Not accepted, because a coordinate can't be reliably checked as "in the USA" without a boundary dataset. `City, ST` keeps the USA-only rule exact. |
 | **Alaska and Hawaii** | Rejected with `UNSUPPORTED_REGION`: Alaska is only reachable by road through Canada, and Hawaii has no road link. |
 | **Live prices** | Prices come from the provided CSV. A production version would refresh them on a schedule. |
+| **Database** | SQLite is enough for read-only reference data. A multi-instance deployment would use PostgreSQL. |
 | **Browser JS tests** | The map's HTML contract is tested, but the JavaScript isn't, since that would need Playwright or Selenium. |
 
 ---
 
 ## Configuration
 
-All settings come from environment variables (see `.env.example`).
+All settings come from environment variables (see `.env.example`). In Docker, `docker-compose.yml` reads `.env` and overrides the Docker-specific values (`DJANGO_DEBUG=False`, `REDIS_URL`, `SQLITE_PATH`).
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -260,7 +309,9 @@ All settings come from environment variables (see `.env.example`).
 | `VEHICLE_RANGE_MILES` | `500` | Tank range |
 | `VEHICLE_MPG` | `10` | Fuel economy |
 | `ROUTE_CACHE_SECONDS` | `86400` | Route cache lifetime |
-| `REDIS_URL` | (none) | Use Redis for the cache and rate limits; otherwise local memory |
+| `REDIS_URL` | (none) | Use Redis for the cache and rate limits; otherwise local memory. Set automatically in Docker |
+| `SQLITE_PATH` | `./db.sqlite3` | SQLite file location. Set to `/app/var/db.sqlite3` (a volume) in Docker |
+| `GUNICORN_WORKERS` | `3` | Docker only: number of gunicorn worker processes |
 | `LOG_LEVEL` | `INFO` | Log level (`WARNING` during tests) |
 | `NOMINATIM_USER_AGENT` | project URL | Only used by `build_city_overrides` |
 
@@ -269,6 +320,9 @@ All settings come from environment variables (see `.env.example`).
 ## Project structure
 
 ```
+Dockerfile              App image: Python 3.14 slim, collectstatic, non-root user, gunicorn
+docker-compose.yml      App + Redis, health checks, data volume
+.dockerignore           Keeps .env, .venv and .git out of the image
 config/                 Django project: settings, URLs, WSGI (startup warm-up)
   exceptions.py         One error format for the whole API
   middleware.py         Request timing (X-Response-Time-ms) and logging
@@ -277,7 +331,7 @@ stations/               Data: models, cleaning and geocoding
   normalize.py          City-name normalization shared by loading and lookups
   fuel_csv.py           CSV parsing, allow-list filtering, cheapest-price dedupe
   geocoding.py          City lookups with the override fallback
-  management/commands/  load_cities, load_stations, build_city_overrides
+  management/commands/  load_cities, load_stations, ensure_data, build_city_overrides
 routing/                Logic and API
   locations.py          "City, ST" -> coordinates (no network)
   ors.py                The single OpenRouteService call
@@ -297,12 +351,15 @@ data/                   Fuel price CSV, Census Gazetteer zips, city overrides
 
 ```bash
 pip install -r requirements-dev.txt
-python manage.py test -v 2     # 49 tests; OpenRouteService is mocked, so no key is needed
+python manage.py test -v 2     # 52 tests; OpenRouteService is mocked, so no key is needed
 ruff check .                   # lint
 ruff format .                  # format
 ```
 
-GitHub Actions runs `ruff check`, `ruff format --check`, Django system checks, a missing-migration check and the full test suite on Python 3.12 and 3.14 for every pull request.
+GitHub Actions runs on every pull request:
+- `ruff check` and `ruff format --check`;
+- Django system checks, a missing-migration check and the full test suite on Python 3.12 and 3.14;
+- a Docker image build.
 
 The project was built as a series of feature branches, each merged through a pull request. See the [pull request history](https://github.com/GloriousPurposeVariant/fuel-route-optimizer/pulls?q=is%3Apr+is%3Aclosed) for the reasoning behind each step.
 
